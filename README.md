@@ -176,13 +176,13 @@ jobs:
 
 Various inputs are defined in [`action.yml`](action.yml) to let you configure the labeler:
 
-| Name                 | Description                                                                                                                                                              | Default               |
-|----------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------|
-| `repo-token`         | Token to use to authorize label changes. Typically the GITHUB_TOKEN secret                                                                                               | `github.token`        |
-| `configuration-path` | The path to the label configuration file. If the file doesn't exist at the specified path on the runner, action will read from the source repository via the Github API. | `.github/labeler.yml` |
-| `sync-labels`        | Whether or not to remove labels when matching files are reverted or no longer changed by the PR                                                                          | `false`               |
-| `dot`                | Whether or not to auto-include paths starting with dot (e.g. `.github`)                                                                                                  | `true`               |
-| `pr-number`          | The number(s) of pull request to update, rather than detecting from the workflow context                                                                                 | N/A                   |
+| Name                   | Description                                                                                                                                                              | Default               |
+|------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------|
+| `repo-token`           | Token to use to authorize label changes. Typically the GITHUB_TOKEN secret                                                                                               | `github.token`        |
+| `configuration-path`   | The path to the label configuration file. If the file doesn't exist at the specified path on the runner, action will read from the source repository via the Github API. | `.github/labeler.yml` |
+| `sync-labels`          | Whether or not to remove labels when matching files are reverted or no longer changed by the PR                                                                          | `false`               |
+| `dot`                  | Whether or not to auto-include paths starting with dot (e.g. `.github`)                                                                                                  | `true`               |
+| `pr-number`            | The number(s) of pull request to update, rather than detecting from the workflow context                                                                                 | N/A                   |
 
 ##### Using `configuration-path` input together with the `@actions/checkout` action
 You might want to use action called [@actions/checkout](https://github.com/actions/checkout) to upload label configuration file onto the runner from the current or any other repositories. See usage example below:
@@ -224,6 +224,42 @@ jobs:
 ```
 
 **Note:** in normal usage the `pr-number` input is not required as the action will detect the PR number from the workflow context.
+
+#### Configuration Options
+
+The labeler configuration file (`.github/labeler.yml`) supports the following top-level options:
+
+| Name                   | Description                                                                                                                                                              |
+|------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `changed-files-limit`  | Maximum number of labels to apply based on changed files. If exceeded, no changed-files labels are applied. Useful for tree-wide refactors that touch many components.  |
+
+##### Example: limiting changed-files labels
+
+When working with large PRs (e.g., tree-wide refactors) that touch many components, you may want to prevent the labeler from adding too many labels. Set `changed-files-limit` in your `.github/labeler.yml` configuration file to limit the number of labels that can be applied based on changed files patterns. If the limit is exceeded, no changed-files labels will be applied, while branch-based labels will still work normally.
+
+```yml
+# .github/labeler.yml
+
+# Limit changed-files based labels to 5
+changed-files-limit: 5
+
+# Label definitions
+frontend:
+  - changed-files:
+    - any-glob-to-any-file: 'src/frontend/**'
+
+backend:
+  - changed-files:
+    - any-glob-to-any-file: 'src/backend/**'
+
+docs:
+  - changed-files:
+    - any-glob-to-any-file: 'docs/**'
+
+# Branch-based labels are not affected by the limit
+feature:
+  - head-branch: '^feature/'
+```
 
 #### Outputs 
 
