@@ -21,22 +21,29 @@ export type BaseMatchConfig = BranchMatchConfig & ChangedFilesMatchConfig;
 export interface LabelConfigResult {
   labelConfigs: Map<string, MatchConfig[]>;
   changedFilesLimit?: number;
+  maxFilesChanged?: number;
 }
 
 const ALLOWED_CONFIG_KEYS = ['changed-files', 'head-branch', 'base-branch'];
-const TOP_LEVEL_OPTIONS = ['changed-files-labels-limit'];
+const TOP_LEVEL_OPTIONS = ['changed-files-labels-limit', 'max-files-changed'];
 
 /**
  * Parses and validates a limit value from the configuration.
  * Accepts only non-negative integers.
  */
-function parseChangedFilesLabelsLimit(value: unknown): number {
+/**
+ * Parses and validates a non-negative integer value from the configuration.
+ */
+function parseNonNegativeInteger(
+  value: unknown,
+  optionName: string
+): number {
   let parsed: number;
 
   if (typeof value === 'number') {
     if (!Number.isFinite(value) || !Number.isInteger(value)) {
       throw new Error(
-        `Invalid value for 'changed-files-labels-limit': must be a non-negative integer (got ${value})`
+        `Invalid value for '${optionName}': must be a non-negative integer (got ${value})`
       );
     }
     parsed = value;
@@ -44,19 +51,19 @@ function parseChangedFilesLabelsLimit(value: unknown): number {
     // Require string to be only digits
     if (!/^\d+$/.test(value)) {
       throw new Error(
-        `Invalid value for 'changed-files-labels-limit': must be a non-negative integer (got '${value}')`
+        `Invalid value for '${optionName}': must be a non-negative integer (got '${value}')`
       );
     }
     parsed = parseInt(value, 10);
   } else {
     throw new Error(
-      `Invalid value for 'changed-files-labels-limit': expected a non-negative integer`
+      `Invalid value for '${optionName}': expected a non-negative integer`
     );
   }
 
   if (parsed < 0) {
     throw new Error(
-      `Invalid value for 'changed-files-labels-limit': must be a non-negative integer (got ${parsed})`
+      `Invalid value for '${optionName}': must be a non-negative integer (got ${parsed})`
     );
   }
 
@@ -106,15 +113,28 @@ export function getLabelConfigResultFromObject(
 ): LabelConfigResult {
   // Extract top-level options
   let changedFilesLimit: number | undefined;
+  let maxFilesChanged: number | undefined;
 
   const limitValue = configObject?.['changed-files-labels-limit'];
   if (limitValue !== undefined) {
-    changedFilesLimit = parseChangedFilesLabelsLimit(limitValue);
+    changedFilesLimit = parseNonNegativeInteger(
+      limitValue,
+      'changed-files-labels-limit'
+    );
+  }
+
+  const maxFilesValue = configObject?.['max-files-changed'];
+  if (maxFilesValue !== undefined) {
+    maxFilesChanged = parseNonNegativeInteger(
+      maxFilesValue,
+      'max-files-changed'
+    );
   }
 
   return {
     labelConfigs: getLabelConfigMapFromObject(configObject),
-    changedFilesLimit
+    changedFilesLimit,
+    maxFilesChanged
   };
 }
 

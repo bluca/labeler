@@ -280,31 +280,34 @@ const get_content_1 = __nccwpck_require__(6519);
 const changedFiles_1 = __nccwpck_require__(5145);
 const branch_1 = __nccwpck_require__(2234);
 const ALLOWED_CONFIG_KEYS = ['changed-files', 'head-branch', 'base-branch'];
-const TOP_LEVEL_OPTIONS = ['changed-files-labels-limit'];
+const TOP_LEVEL_OPTIONS = ['changed-files-labels-limit', 'max-files-changed'];
 /**
  * Parses and validates a limit value from the configuration.
  * Accepts only non-negative integers.
  */
-function parseChangedFilesLabelsLimit(value) {
+/**
+ * Parses and validates a non-negative integer value from the configuration.
+ */
+function parseNonNegativeInteger(value, optionName) {
     let parsed;
     if (typeof value === 'number') {
         if (!Number.isFinite(value) || !Number.isInteger(value)) {
-            throw new Error(`Invalid value for 'changed-files-labels-limit': must be a non-negative integer (got ${value})`);
+            throw new Error(`Invalid value for '${optionName}': must be a non-negative integer (got ${value})`);
         }
         parsed = value;
     }
     else if (typeof value === 'string') {
         // Require string to be only digits
         if (!/^\d+$/.test(value)) {
-            throw new Error(`Invalid value for 'changed-files-labels-limit': must be a non-negative integer (got '${value}')`);
+            throw new Error(`Invalid value for '${optionName}': must be a non-negative integer (got '${value}')`);
         }
         parsed = parseInt(value, 10);
     }
     else {
-        throw new Error(`Invalid value for 'changed-files-labels-limit': expected a non-negative integer`);
+        throw new Error(`Invalid value for '${optionName}': expected a non-negative integer`);
     }
     if (parsed < 0) {
-        throw new Error(`Invalid value for 'changed-files-labels-limit': must be a non-negative integer (got ${parsed})`);
+        throw new Error(`Invalid value for '${optionName}': must be a non-negative integer (got ${parsed})`);
     }
     return parsed;
 }
@@ -335,13 +338,19 @@ exports.getLabelConfigs = getLabelConfigs;
 function getLabelConfigResultFromObject(configObject) {
     // Extract top-level options
     let changedFilesLimit;
+    let maxFilesChanged;
     const limitValue = configObject === null || configObject === void 0 ? void 0 : configObject['changed-files-labels-limit'];
     if (limitValue !== undefined) {
-        changedFilesLimit = parseChangedFilesLabelsLimit(limitValue);
+        changedFilesLimit = parseNonNegativeInteger(limitValue, 'changed-files-labels-limit');
+    }
+    const maxFilesValue = configObject === null || configObject === void 0 ? void 0 : configObject['max-files-changed'];
+    if (maxFilesValue !== undefined) {
+        maxFilesChanged = parseNonNegativeInteger(maxFilesValue, 'max-files-changed');
     }
     return {
         labelConfigs: getLabelConfigMapFromObject(configObject),
-        changedFilesLimit
+        changedFilesLimit,
+        maxFilesChanged
     };
 }
 function getLabelConfigMapFromObject(configObject) {
@@ -1134,7 +1143,13 @@ function labeler() {
                 _c = pullRequests_1_1.value;
                 _d = false;
                 const pullRequest = _c;
-                const { labelConfigs, changedFilesLimit } = yield api.getLabelConfigs(client, configPath);
+                const { labelConfigs, changedFilesLimit, maxFilesChanged } = yield api.getLabelConfigs(client, configPath);
+                // Check if total changed files exceeds the max-files-changed threshold
+                const skipChangedFilesLabeling = maxFilesChanged !== undefined &&
+                    pullRequest.changedFiles.length > maxFilesChanged;
+                if (skipChangedFilesLabeling) {
+                    core.info(`Total changed files (${pullRequest.changedFiles.length}) exceeds max-files-changed (${maxFilesChanged}), skipping file-based labeling`);
+                }
                 const preexistingLabels = pullRequest.data.labels.map(l => l.name);
                 const allLabels = new Set(preexistingLabels);
                 // Track labels that would be added based on changed-files patterns
@@ -1152,11 +1167,17 @@ function labeler() {
                         allLabels.delete(label);
                     }
                 }
-                // Check if changed-files labels exceed the limit
+                // Check if changed-files labels should be skipped
                 const newChangedFilesLabels = [...changedFilesLabels].filter(l => !preexistingLabels.includes(l));
-                if (changedFilesLimit !== undefined &&
-                    newChangedFilesLabels.length > changedFilesLimit) {
-                    core.info(`Changed-files labels (${newChangedFilesLabels.length}) exceed limit (${changedFilesLimit}), skipping: ${newChangedFilesLabels.join(', ')}`);
+                // Skip changed-files labels if: max-files-changed exceeded OR changed-files-labels-limit exceeded
+                const shouldSkipChangedFilesLabels = skipChangedFilesLabeling ||
+                    (changedFilesLimit !== undefined &&
+                        newChangedFilesLabels.length > changedFilesLimit);
+                if (shouldSkipChangedFilesLabels && newChangedFilesLabels.length > 0) {
+                    if (!skipChangedFilesLabeling) {
+                        // Only log the labels-limit message if not already logged the max-files message
+                        core.info(`Changed-files labels (${newChangedFilesLabels.length}) exceed limit (${changedFilesLimit}), skipping: ${newChangedFilesLabels.join(', ')}`);
+                    }
                     // Remove all new changed-files labels
                     for (const label of newChangedFilesLabels) {
                         allLabels.delete(label);

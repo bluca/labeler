@@ -39,10 +39,20 @@ export async function labeler() {
   const pullRequests = api.getPullRequests(client, prNumbers);
 
   for await (const pullRequest of pullRequests) {
-    const {labelConfigs, changedFilesLimit} = await api.getLabelConfigs(
-      client,
-      configPath
-    );
+    const {labelConfigs, changedFilesLimit, maxFilesChanged} =
+      await api.getLabelConfigs(client, configPath);
+
+    // Check if total changed files exceeds the max-files-changed threshold
+    const skipChangedFilesLabeling =
+      maxFilesChanged !== undefined &&
+      pullRequest.changedFiles.length > maxFilesChanged;
+
+    if (skipChangedFilesLabeling) {
+      core.info(
+        `Total changed files (${pullRequest.changedFiles.length}) exceeds max-files-changed (${maxFilesChanged}), skipping file-based labeling`
+      );
+    }
+
     const preexistingLabels = pullRequest.data.labels.map(l => l.name);
     const allLabels: Set<string> = new Set<string>(preexistingLabels);
 
@@ -62,18 +72,24 @@ export async function labeler() {
       }
     }
 
-    // Check if changed-files labels exceed the limit
+    // Check if changed-files labels should be skipped
     const newChangedFilesLabels = [...changedFilesLabels].filter(
       l => !preexistingLabels.includes(l)
     );
 
-    if (
-      changedFilesLimit !== undefined &&
-      newChangedFilesLabels.length > changedFilesLimit
-    ) {
-      core.info(
-        `Changed-files labels (${newChangedFilesLabels.length}) exceed limit (${changedFilesLimit}), skipping: ${newChangedFilesLabels.join(', ')}`
-      );
+    // Skip changed-files labels if: max-files-changed exceeded OR changed-files-labels-limit exceeded
+    const shouldSkipChangedFilesLabels =
+      skipChangedFilesLabeling ||
+      (changedFilesLimit !== undefined &&
+        newChangedFilesLabels.length > changedFilesLimit);
+
+    if (shouldSkipChangedFilesLabels && newChangedFilesLabels.length > 0) {
+      if (!skipChangedFilesLabeling) {
+        // Only log the labels-limit message if not already logged the max-files message
+        core.info(
+          `Changed-files labels (${newChangedFilesLabels.length}) exceed limit (${changedFilesLimit}), skipping: ${newChangedFilesLabels.join(', ')}`
+        );
+      }
       // Remove all new changed-files labels
       for (const label of newChangedFilesLabels) {
         allLabels.delete(label);
